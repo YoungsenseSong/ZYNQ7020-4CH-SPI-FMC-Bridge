@@ -1,0 +1,19 @@
+# Example only. Do not add this file to constrs_1.
+# Replace every CONFIG_REQUIRED token from reviewed board documentation.
+
+# set_property PACKAGE_PIN <CONFIG_REQUIRED_PL_CLK_PIN> [get_ports pl_clk]
+# set_property IOSTANDARD <CONFIG_REQUIRED_PL_CLK_IOSTANDARD> [get_ports pl_clk]
+# create_clock -name pl_clk -period <CONFIG_REQUIRED_PERIOD_NS> [get_ports pl_clk]
+
+# set_property PACKAGE_PIN <CONFIG_REQUIRED_RESET_PIN> [get_ports ext_reset_n]
+# set_property IOSTANDARD <CONFIG_REQUIRED_RESET_IOSTANDARD> [get_ports ext_reset_n]
+
+# Repeat reviewed PACKAGE_PIN and IOSTANDARD assignments for:
+# spi_sclk[3:0], spi_mosi[3:0], spi_miso[3:0], spi_cs_n[3:0],
+# spi_drdy[3:0], nrf_reset_n[3:0], sync_out[3:0],
+# nrf_sync_ready[3:0], fmc_ad[15:0], fmc_nadv_n, fmc_ne1_n,
+# fmc_noe_n, fmc_nwe_n, fmc_nwait_n, fpga_irq and status_led.
+
+# Add asynchronous clock groups / input delays only after the STM32 FMC timing
+# and the actual PL clock are confirmed. Do not create a false synchronous
+# relationship for DRDY or FMC control inputs.

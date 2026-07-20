@@ -1,0 +1,25 @@
+# Vivado generated
+*.jou
+*.log
+*.str
+.Xil/
+*.cache/
+*.hw/
+*.runs/
+*.sim/
+*.gen/
+*.ip_user_files/
+
+# Current project generated directories
+zynq7020_bridge.cache/
+zynq7020_bridge.hw/
+zynq7020_bridge.sim/
+zynq7020_bridge.ip_user_files/
+
+# MCP generated
+.venv/
+artifacts/
+logs/
+tmp/
+**pycache**/
+*.pyc
