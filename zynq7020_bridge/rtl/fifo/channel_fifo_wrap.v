@@ -28,7 +28,7 @@ module channel_fifo_wrap #(
     assign out_valid = (count != 0);
     assign out_data = memory[read_ptr];
     assign almost_full = (count >= HIGH_WATER);
-    assign level = count[15:0];
+    assign level = count;
 
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin

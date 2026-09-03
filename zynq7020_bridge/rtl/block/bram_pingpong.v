@@ -1,6 +1,8 @@
+`timescale 1ns/1ps
+
 module bram_pingpong #(
-    parameter TOTAL_BYTES = 32832,
-    parameter WORDS = 16416,
+    parameter TOTAL_BYTES = 32800,
+    parameter WORDS = 16400,
     parameter ACK_POLICY = 0
 ) (
     input  wire        clk,
