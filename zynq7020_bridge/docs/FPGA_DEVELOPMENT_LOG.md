@@ -1,5 +1,50 @@
 # FPGA v1 开发日志
 
+## 2026-09-03 CRC 修正版 CH0 实板功能闭环
+
+- nRF 将 record header CRC 改为冻结的 CRC-16/CCITT-FALSE 后重新烧录；FPGA RTL、
+  接线和最新 CH0 bitstream 未再次修改。
+- 新串口日志最终为 `records=1957`、`QUEUE pop_total=1956`、`crc_errors=0`、
+  `req_xfer=3996`、`rsp_xfer=3995`，证明 CH0 已从启动/SYNC 进入真实 record 的
+  PEEK/COMMIT 和队列释放。
+- 残余累计值为 `invalid_cmd=44`、`short_xfer=29`、`submit_errors=49`；record queue
+  `overflow=4270`。因此功能闭环成立，但当前 1 MHz 与双 5 ms 保护不满足持续无损
+  吞吐，也未完成 30 min/2 h 稳定性验收。
+- 同次 `Imp/iladata.csv` 只有表头和 Radix 行，没有采样行，不能据此记录 FPGA
+  `crc_ok_count`/`commit_ok_count`。下一次必须先完成一次 ILA capture 再导出。
+- 暂不继续修改 FPGA。先由 nRF 侧消除 transport service 并发 submit 窗口并补有效
+  ILA 证据，再逐步缩短保护间隔；之后才进入四路和 FMC 顶层。
+
+## 2026-08-17 四路 record 逻辑对齐
+
+- 只读核对 nRF 默认分支提交 `4e360863a3569c9494197ec701604404519d811d`：RX V2
+  已产生 `sync_epoch`、`rx_tick`、`logical_sample_index` 和 `SYNCED/DEGRADED` 标志，
+  但文档与代码都明确真实 SPIS、GPIOTE-DPPI-TIMER SYNC 捕获及远端 MEMS 公共采样时基
+  尚未完成。
+- 新增 `four_channel_record_aligner.v`，四路各缓存一条 CRC 合法 record；只对同 FPGA
+  epoch、同逻辑样本起点的四路记录按 0..3 顺序成组输出。未同步、旧 epoch、旧索引和
+  record 边界错误均显式计数，204 B payload 不被改写。
+- 新增只读 ALIGN CSR：缓存/输出状态、组数、元数据错误、最近 epoch/index 和每路淘汰数。
+- `tb_four_channel_record_aligner.sv` 覆盖正常 4 路组、未同步淘汰、旧索引追赶和旧 epoch
+  追赶；Icarus 结果为 4 组、drop 2/1/0/0、error 3。原 parser、block builder、A/B ACK
+  三项回归继续通过。
+- Vivado 2025.2 对原 XPR 再次 `check_syntax` 返回 0；日志为
+  `artifacts/bridge-validation/20260817/zynq-four-channel-align-check-syntax-final.log`。
+  未运行综合、实现或 bitstream。
+- 仍不实现分数相位 FIR 或固定每路延迟：缺少统一采样时钟、采样率、可比时间戳和实测
+  标定值，不能把接收/传输到达时间冒充传感器相位。
+
+## 2026-08-16
+
+- 继续复用既有 `zynq7020_bridge.xpr`、part `xc7z020clg400-1`、顶层 `board_top`，未创建第二份工程。
+- 按根仓 `bridge_contract_v0.md` 把 record 从 240 B 改为 248 B，启用 `NRF1` magic、版本/type/长度、CRC16/CCITT-FALSE 和 reflected CRC32/IEEE 校验。
+- block target/max 改为 66/132 条完整 record（16,368/32,736 B），BRAM 和 CSR 数据窗口同步扩为 32,800 B。
+- `BLOCK_ACK_POLICY=1`：只有已 claim bank 且 ACK 等于 `block_sequence[15:0]` 才释放。
+- 修复 one-cycle flush 与下一条 record 首字节同周期时可能丢失的问题；非法最大长度无边界时封错误块而不死锁。
+- `tb_spi_record_parser.sv` 使用共享正/负 record；`tb_block_builder.sv` 对 560 B golden 逐字节比对并测两个 flush 边界；`tb_bram_pingpong.sv` 覆盖未 claim、错误、正确和重复 ACK，三项均通过。
+- Vivado 2025.2 `check_syntax` 再次通过；日志 `artifacts/bridge-validation/20260816/zynq-check-syntax-final.log`。只出现全局 Board Store/空 BoardPart 环境警告，没有 RTL error；未综合、实现或生成 bitstream。
+- 仍未填写 FPGA ID、XDC、PL clock、Bank 电压、nRF 物理 SPI 事务和 reset/sync 极性。
+
 ## 2026-07-20
 
 - 固定使用已确认工程 `zynq7020_bridge/zynq7020_bridge.xpr`，未搜索或创建重复 Vivado 工程。

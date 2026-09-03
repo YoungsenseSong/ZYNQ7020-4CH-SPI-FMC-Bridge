@@ -1,5 +1,17 @@
 # FPGA v1 MCP 验证报告
 
+## 2026-08-16 复核
+
+在既有 XPR 上直接调用同一 `scripts/update_project.tcl`，Vivado 2025.2 返回 0：
+
+- project：`zynq7020_bridge.xpr`
+- part：`xc7z020clg400-1`
+- BoardPart：空
+- `MCP_CHECK_SYNTAX_RESULT=`：成功（空字符串为 Tcl 成功返回值）
+- 日志：`F:\OliverS\AI_Embedded\artifacts\bridge-validation\20260816\zynq-check-syntax-final.log`
+
+全局 Board Store 报告与本器件无关的条目警告，并提示空 BoardPart；没有 RTL error。此次仍未启动 synthesis、implementation 或 bitstream。
+
 ## 目标隔离
 
 - MCP target：`zynq7020_bridge`
@@ -53,3 +65,15 @@ Vivado 报告 154 条环境警告：152 条来自全局 Board Store 中与本器
 ## 结论边界
 
 本报告只证明现有源文件能被 Vivado 2025.2 解析且工程身份匹配。因为没有真实 XDC、未综合、未实现、未做 timing/DRC，也未连接硬件，不能据此宣称工程可生成或下载 bitstream。
+
+## 2026-08-17 四路对齐增量复核
+
+在同一 XPR 中登记 `rtl/alignment/four_channel_record_aligner.v` 后，再次直接调用 Vivado
+2025.2 `scripts/update_project.tcl`。工程仍为 `xc7z020clg400-1`、顶层 `board_top`、
+BoardPart 为空，`check_syntax` 返回 0。日志：
+
+`F:\OliverS\AI_Embedded\artifacts\bridge-validation\20260817\zynq-four-channel-align-check-syntax-final.log`
+
+SHA-256：`1018ee95b2ef65883938fef3e9b7f346a3fb0edb099270758f321c6f2a917709`。
+本次同样没有运行综合、实现、时序、DRC 或 bitstream；全局 Board Store 警告不属于 RTL
+错误，也不用于推断实际 BoardPart。
