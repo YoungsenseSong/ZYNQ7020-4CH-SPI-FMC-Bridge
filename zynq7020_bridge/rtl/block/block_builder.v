@@ -1,13 +1,17 @@
+`timescale 1ns/1ps
+
 module block_builder #(
     parameter [31:0] BLOCK_MAGIC = 32'h31425046,
-    parameter [15:0] PROTOCOL_VERSION = 16'h0000,
+    parameter [15:0] PROTOCOL_VERSION = 16'h0001,
     parameter HEADER_BYTES = 64,
-    parameter TARGET_PAYLOAD_BYTES = 16384,
-    parameter MAX_PAYLOAD_BYTES = 32768,
+    parameter RECORD_BYTES = 248,
+    parameter TARGET_PAYLOAD_BYTES = 16368,
+    parameter MAX_PAYLOAD_BYTES = 32736,
     parameter [31:0] TIMEOUT_CYCLES = 32'd2000000,
-    parameter [31:0] CRC_POLYNOMIAL = 32'h04C11DB7,
+    parameter [31:0] CRC_POLYNOMIAL = 32'hEDB88320,
     parameter [31:0] CRC_INITIAL = 32'hFFFFFFFF,
-    parameter [31:0] CRC_FINAL_XOR = 32'hFFFFFFFF
+    parameter [31:0] CRC_FINAL_XOR = 32'hFFFFFFFF,
+    parameter [31:0] INITIAL_SEQUENCE = 32'd0
 ) (
     input  wire        clk,
     input  wire        reset_n,
@@ -53,12 +57,16 @@ module block_builder #(
     reg [31:0] flags;
     reg [31:0] crc_reg;
     reg at_record_boundary;
+    reg flush_pending;
+    reg timeout_pending;
 
     wire stream_accept = in_valid && in_ready;
     wire [31:0] crc_after_byte = crc_next_byte(crc_reg, in_data);
     wire [31:0] final_crc = crc_reg ^ CRC_FINAL_XOR;
     wire target_reached = (payload_count + 1'b1 >= TARGET_PAYLOAD_BYTES);
     wire maximum_reached = (payload_count + 1'b1 >= MAX_PAYLOAD_BYTES);
+    wire timeout_expired = (TIMEOUT_CYCLES != 0) &&
+                           (timeout_count >= TIMEOUT_CYCLES);
 
     function [31:0] crc_next_byte;
         input [31:0] current_crc;
@@ -66,10 +74,10 @@ module block_builder #(
         reg [31:0] value;
         integer index;
         begin
-            value = current_crc ^ {next_data, 24'h000000};
+            value = current_crc ^ {24'h000000, next_data};
             for (index = 0; index < 8; index = index + 1)
-                value = value[31] ? ((value << 1) ^ CRC_POLYNOMIAL)
-                                  : (value << 1);
+                value = value[0] ? ((value >> 1) ^ CRC_POLYNOMIAL)
+                                 : (value >> 1);
             crc_next_byte = value;
         end
     endfunction
@@ -146,7 +154,8 @@ module block_builder #(
     endfunction
 
     assign alloc_request = (state == STATE_ALLOC);
-    assign in_ready = (state == STATE_COLLECT) && (payload_count < MAX_PAYLOAD_BYTES);
+    assign in_ready = (state == STATE_COLLECT) &&
+                      (payload_count < MAX_PAYLOAD_BYTES);
 
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
@@ -165,6 +174,8 @@ module block_builder #(
             flags <= 32'd0;
             crc_reg <= CRC_INITIAL;
             at_record_boundary <= 1'b1;
+            flush_pending <= 1'b0;
+            timeout_pending <= 1'b0;
             write_valid <= 1'b0;
             write_bank <= 1'b0;
             write_address <= 16'd0;
@@ -173,7 +184,7 @@ module block_builder #(
             seal_bank <= 1'b0;
             seal_length <= 16'd0;
             seal_sequence <= 32'd0;
-            current_sequence <= 32'd0;
+            current_sequence <= INITIAL_SEQUENCE;
         end else begin
             write_valid <= 1'b0;
             seal_valid <= 1'b0;
@@ -194,12 +205,19 @@ module block_builder #(
                         flags <= 32'd0;
                         crc_reg <= CRC_INITIAL;
                         at_record_boundary <= 1'b1;
+                        flush_pending <= 1'b0;
+                        timeout_pending <= 1'b0;
                         state <= STATE_COLLECT;
                     end
                 end
                 STATE_COLLECT: begin
                     if (payload_count != 0)
                         timeout_count <= timeout_count + 1'b1;
+
+                    if (timeout_expired && (payload_count != 0)) begin
+                        timeout_pending <= 1'b1;
+                        flags[3] <= 1'b1;
+                    end
 
                     if (stream_accept) begin
                         write_valid <= 1'b1;
@@ -215,6 +233,14 @@ module block_builder #(
                             first_tick <= fpga_tick;
                         if (in_error)
                             flags[0] <= 1'b1;
+                        // Latch a one-cycle flush even when it arrives with
+                        // the first byte after a record boundary.  The state
+                        // before this transfer describes the previous byte;
+                        // in_last describes the boundary after this byte.
+                        if (flush && !in_last) begin
+                            flush_pending <= 1'b1;
+                            flags[2] <= 1'b1;
+                        end
                         if (in_last) begin
                             case (in_channel)
                                 2'd0: record_count0 <= record_count0 + 1'b1;
@@ -223,21 +249,30 @@ module block_builder #(
                                 2'd3: record_count3 <= record_count3 + 1'b1;
                             endcase
                         end
-                        if ((in_last && target_reached) || maximum_reached) begin
-                            if (maximum_reached && !in_last)
-                                flags[1] <= 1'b1;
+                        if (maximum_reached && !in_last) begin
+                            // A validated fixed-size record stream cannot hit
+                            // this path.  Seal an explicitly invalid block
+                            // instead of deadlocking forever on in_ready=0.
+                            flags[1] <= 1'b1;
+                            header_index <= 6'd0;
+                            state <= STATE_HEADER;
+                        end else if (in_last &&
+                                     (target_reached || maximum_reached ||
+                                      flush_pending || flush ||
+                                      timeout_pending || timeout_expired)) begin
                             header_index <= 6'd0;
                             state <= STATE_HEADER;
                         end
                     end else if (flush && (payload_count != 0)) begin
-                        if (!at_record_boundary)
+                        if (!at_record_boundary) begin
+                            flush_pending <= 1'b1;
                             flags[2] <= 1'b1;
-                        header_index <= 6'd0;
-                        state <= STATE_HEADER;
-                    end else if ((TIMEOUT_CYCLES != 0) &&
-                                 (timeout_count >= TIMEOUT_CYCLES) &&
-                                 at_record_boundary && (payload_count != 0)) begin
-                        flags[3] <= 1'b1;
+                        end else begin
+                            header_index <= 6'd0;
+                            state <= STATE_HEADER;
+                        end
+                    end else if (timeout_expired && at_record_boundary &&
+                                 (payload_count != 0)) begin
                         header_index <= 6'd0;
                         state <= STATE_HEADER;
                     end

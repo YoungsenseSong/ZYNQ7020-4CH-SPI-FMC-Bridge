@@ -2,6 +2,8 @@
 *.jou
 *.log
 *.str
+*.vvp
+dfx_runtime.txt
 .Xil/
 *.cache/
 *.hw/
@@ -9,12 +11,19 @@
 *.sim/
 *.gen/
 *.ip_user_files/
+*.srcs/
 
 # Current project generated directories
 zynq7020_bridge.cache/
 zynq7020_bridge.hw/
 zynq7020_bridge.sim/
 zynq7020_bridge.ip_user_files/
+zynq7020_bridge/Imp/
+zynq7020_bridge/build/
+zynq7020_bridge/vivado_pid*.zip
+
+# Local vendor manuals, schematics, archives, and board reference material
+/硬件资料/
 
 # MCP generated
 .venv/

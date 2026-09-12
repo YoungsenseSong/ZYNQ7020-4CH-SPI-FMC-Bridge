@@ -35,6 +35,13 @@ module csr_bank (
     input  wire [127:0] fifo_drops,
     input  wire [127:0] parser_good,
     input  wire [127:0] parser_errors,
+    input  wire [3:0]  alignment_buffered_mask,
+    input  wire        alignment_emitting,
+    input  wire [31:0] aligned_group_count,
+    input  wire [127:0] alignment_drop_count,
+    input  wire [31:0] alignment_error_count,
+    input  wire [31:0] last_aligned_epoch,
+    input  wire [63:0] last_aligned_index,
     input  wire [15:0] irq_status,
     input  wire [15:0] irq_mask,
     output reg         irq_clear_valid,
@@ -61,9 +68,28 @@ module csr_bank (
     localparam REG_BLOCK_STATUS = 16'h0040;
     localparam REG_BLOCK_LEN = 16'h0042;
     localparam REG_BLOCK_ACK = 16'h0044;
+    localparam REG_ALIGN_STATUS = 16'h0050;
+    localparam REG_ALIGN_GROUP_LO = 16'h0052;
+    localparam REG_ALIGN_GROUP_HI = 16'h0054;
+    localparam REG_ALIGN_ERROR_LO = 16'h0056;
+    localparam REG_ALIGN_ERROR_HI = 16'h0058;
+    localparam REG_ALIGN_EPOCH_LO = 16'h005A;
+    localparam REG_ALIGN_EPOCH_HI = 16'h005C;
+    localparam REG_ALIGN_INDEX_0 = 16'h0060;
+    localparam REG_ALIGN_INDEX_1 = 16'h0062;
+    localparam REG_ALIGN_INDEX_2 = 16'h0064;
+    localparam REG_ALIGN_INDEX_3 = 16'h0066;
+    localparam REG_ALIGN_DROP0_LO = 16'h0068;
+    localparam REG_ALIGN_DROP0_HI = 16'h006A;
+    localparam REG_ALIGN_DROP1_LO = 16'h006C;
+    localparam REG_ALIGN_DROP1_HI = 16'h006E;
+    localparam REG_ALIGN_DROP2_LO = 16'h0070;
+    localparam REG_ALIGN_DROP2_HI = 16'h0072;
+    localparam REG_ALIGN_DROP3_LO = 16'h0074;
+    localparam REG_ALIGN_DROP3_HI = 16'h0076;
     localparam REG_CHANNEL_BASE = 16'h0100;
     localparam REG_DATA_WINDOW = 16'h1000;
-    localparam DATA_WINDOW_END = 16'h9040;
+    localparam DATA_WINDOW_END = 16'h9020;
 
     reg bram_read_pending;
     reg [15:0] global_status_word;
@@ -208,6 +234,25 @@ module csr_bank (
                         REG_BLOCK_STATUS: read_data <= {8'd0, owner_bank1, owner_bank0, block_bank, block_ready};
                         REG_BLOCK_LEN: read_data <= block_length;
                         REG_BLOCK_ACK: read_data <= block_ack_value;
+                        REG_ALIGN_STATUS: read_data <= {7'd0, alignment_emitting, 4'd0, alignment_buffered_mask};
+                        REG_ALIGN_GROUP_LO: read_data <= aligned_group_count[15:0];
+                        REG_ALIGN_GROUP_HI: read_data <= aligned_group_count[31:16];
+                        REG_ALIGN_ERROR_LO: read_data <= alignment_error_count[15:0];
+                        REG_ALIGN_ERROR_HI: read_data <= alignment_error_count[31:16];
+                        REG_ALIGN_EPOCH_LO: read_data <= last_aligned_epoch[15:0];
+                        REG_ALIGN_EPOCH_HI: read_data <= last_aligned_epoch[31:16];
+                        REG_ALIGN_INDEX_0: read_data <= last_aligned_index[15:0];
+                        REG_ALIGN_INDEX_1: read_data <= last_aligned_index[31:16];
+                        REG_ALIGN_INDEX_2: read_data <= last_aligned_index[47:32];
+                        REG_ALIGN_INDEX_3: read_data <= last_aligned_index[63:48];
+                        REG_ALIGN_DROP0_LO: read_data <= alignment_drop_count[15:0];
+                        REG_ALIGN_DROP0_HI: read_data <= alignment_drop_count[31:16];
+                        REG_ALIGN_DROP1_LO: read_data <= alignment_drop_count[47:32];
+                        REG_ALIGN_DROP1_HI: read_data <= alignment_drop_count[63:48];
+                        REG_ALIGN_DROP2_LO: read_data <= alignment_drop_count[79:64];
+                        REG_ALIGN_DROP2_HI: read_data <= alignment_drop_count[95:80];
+                        REG_ALIGN_DROP3_LO: read_data <= alignment_drop_count[111:96];
+                        REG_ALIGN_DROP3_HI: read_data <= alignment_drop_count[127:112];
                         default: begin
                             if ((address >= REG_CHANNEL_BASE) && (address < 16'h0140))
                                 read_data <= channel_read_data;

@@ -7,6 +7,7 @@ if {![file exists $project_path]} {
 }
 
 open_project $project_path
+set_property PART xc7z020clg400-2 [current_project]
 set detected_part [get_property PART [current_project]]
 set detected_board_part [get_property BOARD_PART [current_project]]
 puts "MCP_PROJECT_PATH=$project_path"
@@ -34,7 +35,7 @@ foreach constraint_file $constraint_files {
 }
 
 set_property include_dirs $include_dirs [get_filesets sources_1]
-set_property top board_top [get_filesets sources_1]
+set_property top ch0_test_top [get_filesets sources_1]
 update_compile_order -fileset sources_1
 
 set syntax_ok 1

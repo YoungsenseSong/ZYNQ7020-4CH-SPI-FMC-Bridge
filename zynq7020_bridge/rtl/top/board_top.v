@@ -1,8 +1,9 @@
 `include "protocol_defs.vh"
 
 module board_top #(
-    parameter PL_CLOCK_HZ = 100000000,
-    parameter TICK_DIVIDER = 100,
+    parameter PL_CLOCK_HZ = 50000000,
+    parameter TICK_DIVIDER = 50,
+    parameter [3:0] ACTIVE_CHANNEL_MASK = 4'b0001,
     parameter FIFO_DEPTH = 16384,
     parameter FIFO_ADDR_WIDTH = 14,
     parameter FIFO_HIGH_WATER = 14336
@@ -83,6 +84,13 @@ module board_top #(
     wire scheduled_error;
     wire scheduled_valid;
     wire scheduled_ready;
+    wire [3:0] alignment_buffered_mask;
+    wire alignment_emitting;
+    wire [31:0] aligned_group_count;
+    wire [127:0] alignment_drop_count;
+    wire [31:0] alignment_error_count;
+    wire [31:0] last_aligned_epoch;
+    wire [63:0] last_aligned_index;
 
     wire alloc_request;
     wire alloc_grant;
@@ -166,7 +174,8 @@ module board_top #(
         .locked_mask(sync_locked_mask)
     );
 
-    assign spi_start = {4{running}} & drdy_sync & ~spi_busy & ~parser_busy & ~fifo_almost_full;
+    assign spi_start = {4{running}} & ACTIVE_CHANNEL_MASK & drdy_sync &
+                       ~spi_busy & ~parser_busy & ~fifo_almost_full;
     assign nrf_reset_n = {4{reset_n}};
     assign status_led = running;
 
@@ -187,10 +196,18 @@ module board_top #(
             );
 
             spi_record_parser #(
-                .MAX_RECORD_BYTES(512), .CHECK_MAGIC(`SPI_CHECK_MAGIC),
-                .MAGIC_VALUE(`SPI_MAGIC_VALUE), .CHECK_CRC(`SPI_CHECK_CRC),
-                .CRC_POLYNOMIAL(`CRC32_POLYNOMIAL),
-                .CRC_INITIAL(`CRC32_INITIAL), .CRC_FINAL_XOR(`CRC32_FINAL_XOR)
+                .MAX_RECORD_BYTES(512), .RECORD_BYTES(`SPI_RECORD_BYTES),
+                .CHECK_MAGIC(`SPI_CHECK_MAGIC), .MAGIC_VALUE(`SPI_MAGIC_VALUE),
+                .VERSION_VALUE(`SPI_RECORD_VERSION),
+                .RECORD_TYPE_VALUE(`SPI_RECORD_TYPE),
+                .PAYLOAD_BYTES(`SPI_RECORD_PAYLOAD_BYTES),
+                .CHECK_CRC(`SPI_CHECK_CRC),
+                .CRC16_POLYNOMIAL(`CRC16_POLYNOMIAL),
+                .CRC16_INITIAL(`CRC16_INITIAL),
+                .CRC16_FINAL_XOR(`CRC16_FINAL_XOR),
+                .CRC32_POLYNOMIAL(`CRC32_POLYNOMIAL),
+                .CRC32_INITIAL(`CRC32_INITIAL),
+                .CRC32_FINAL_XOR(`CRC32_FINAL_XOR)
             ) parser (
                 .clk(clk), .reset_n(reset_n), .start(spi_start[channel]),
                 .expected_length(`SPI_RECORD_BYTES),
@@ -230,21 +247,30 @@ module board_top #(
         end
     endgenerate
 
-    rr_watermark_scheduler #(
-        .HIGH_WATER(FIFO_HIGH_WATER), .MAX_BURST_RECORDS(4)
-    ) scheduler (
+    four_channel_record_aligner #(
+        .RECORD_BYTES(`SPI_RECORD_BYTES),
+        .ACTIVE_CHANNEL_MASK(ACTIVE_CHANNEL_MASK)
+    ) record_aligner (
         .clk(clk), .reset_n(reset_n), .in_data(fifo_out_data),
-        .in_valid(fifo_out_valid), .in_level(fifo_levels),
+        .expected_epoch(sync_active_epoch), .in_valid(fifo_out_valid),
         .in_ready(fifo_out_ready), .out_data(scheduled_data),
         .out_channel(scheduled_channel), .out_last(scheduled_last),
         .out_error(scheduled_error), .out_valid(scheduled_valid),
-        .out_ready(scheduled_ready)
+        .out_ready(scheduled_ready),
+        .buffered_mask(alignment_buffered_mask),
+        .emitting(alignment_emitting),
+        .aligned_group_count(aligned_group_count),
+        .stale_drop_count(alignment_drop_count),
+        .metadata_error_count(alignment_error_count),
+        .last_aligned_epoch(last_aligned_epoch),
+        .last_aligned_index(last_aligned_index)
     );
 
     block_builder #(
         .BLOCK_MAGIC(`BLOCK_MAGIC_VALUE),
         .PROTOCOL_VERSION(`PROTO_VERSION_VALUE),
         .HEADER_BYTES(`BLOCK_HEADER_BYTES),
+        .RECORD_BYTES(`SPI_RECORD_BYTES),
         .TARGET_PAYLOAD_BYTES(`BLOCK_TARGET_PAYLOAD_BYTES),
         .MAX_PAYLOAD_BYTES(`BLOCK_MAX_PAYLOAD_BYTES),
         .TIMEOUT_CYCLES(`BLOCK_TIMEOUT_CYCLES),
@@ -266,7 +292,7 @@ module board_top #(
     );
 
     bram_pingpong #(
-        .TOTAL_BYTES(32832), .WORDS(16416), .ACK_POLICY(`BLOCK_ACK_POLICY)
+        .TOTAL_BYTES(32800), .WORDS(16400), .ACK_POLICY(`BLOCK_ACK_POLICY)
     ) pingpong (
         .clk(clk), .reset_n(reset_n), .alloc_request(alloc_request),
         .alloc_grant(alloc_grant), .alloc_bank(alloc_bank),
@@ -310,7 +336,14 @@ module board_top #(
         .owner_bank1(owner_bank1), .block_ack_valid(block_ack_valid),
         .block_ack_value(block_ack_value), .fifo_levels(fifo_levels),
         .fifo_drops(fifo_drop_count), .parser_good(parser_good_count),
-        .parser_errors(parser_error_count), .irq_status(irq_status),
+        .parser_errors(parser_error_count),
+        .alignment_buffered_mask(alignment_buffered_mask),
+        .alignment_emitting(alignment_emitting),
+        .aligned_group_count(aligned_group_count),
+        .alignment_drop_count(alignment_drop_count),
+        .alignment_error_count(alignment_error_count),
+        .last_aligned_epoch(last_aligned_epoch),
+        .last_aligned_index(last_aligned_index), .irq_status(irq_status),
         .irq_mask(irq_mask), .irq_clear_valid(irq_clear_valid),
         .irq_clear_value(irq_clear_value),
         .irq_mask_write_valid(irq_mask_write_valid),
@@ -321,7 +354,9 @@ module board_top #(
         .bram_claim_valid(bram_claim_valid), .bram_claim_bank(bram_claim_bank)
     );
 
-    assign degraded = (|parser_error_count) || (|fifo_drop_count) || (|spi_timeout);
+    assign degraded = (|parser_error_count) || (|fifo_drop_count) ||
+                      (|spi_timeout) || (|alignment_drop_count) ||
+                      (|alignment_error_count);
     assign irq_event_set = {
         10'h000,
         fatal,
