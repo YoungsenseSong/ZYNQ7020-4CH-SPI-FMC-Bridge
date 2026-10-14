@@ -1,3 +1,14 @@
+# 2026-10-14 Current FPGA Projects
+
+The retained current projects are under [`releases/20261014`](releases/20261014):
+GPIO-serial single-channel demo, latest formal FMC single-channel,
+complete dual-channel and complete four-channel board wrappers.
+Formal FMC RTL and retained bit/ltx remain unchanged.
+Dual/four-channel packages retain the CH1 or CH1-CH3 pin-freeze gate:
+no guessed pin assignments or unsupported bitstream are supplied.
+This release includes portable XPR/Tcl entry points and RTL tests.
+The following documentation describes the older baseline.
+
 # ZYNQ7020 团队开发交接版
 
 先读 [HANDOFF.md](HANDOFF.md) 和 [验证摘要](HANDOFF_VALIDATION.md)。
