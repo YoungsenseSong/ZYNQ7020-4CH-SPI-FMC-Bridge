@@ -1,13 +1,18 @@
-# 2026-10-14 Current FPGA Projects
+# ZYNQ7020 FPGA Projects
 
-The retained current projects are under [`releases/20261014`](releases/20261014):
-GPIO-serial single-channel demo, latest formal FMC single-channel,
-complete dual-channel and complete four-channel board wrappers.
-Formal FMC RTL and retained bit/ltx remain unchanged.
-Dual/four-channel packages retain the CH1 or CH1-CH3 pin-freeze gate:
-no guessed pin assignments or unsupported bitstream are supplied.
-This release includes portable XPR/Tcl entry points and RTL tests.
-The following documentation describes the older baseline.
+This repository contains the current ZYNQ7020 FPGA project payloads under
+`projects/`:
+
+| Project | Entry | Status |
+|---|---|---|
+| Single-channel FMC | `projects/single_channel_fmc/` | Board-verified single-channel baseline |
+| Dual-channel SPI/FMC | `projects/dual_channel/` | Digital project and same-source dual-receiver backend demo; TX2 RF path and physical sample sync remain open |
+| Four-channel core | `projects/four_channel/` | RTL/simulation project; four-channel board acceptance is pending |
+
+The older `releases/20261014/` packages are retained as historical release
+inputs. `zynq7020_bridge/` remains the shared RTL/IP workspace and project
+generator. Do not infer four-channel board readiness from RTL or synthesis
+results.
 
 # ZYNQ7020 团队开发交接版
 

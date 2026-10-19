@@ -1,0 +1,17 @@
+name: four_channel
+title: ZYNQ7020 四通道采集核心
+type: fpga
+status: active
+owner: Oliver
+created: 2026-10-19
+board: ZYNQ7020 prototype / future custom FPGA board
+device: XC7Z020CLG400-2
+toolchain:
+  - Vivado 2025.2
+  - Xilinx Tcl batch flow
+entry_docs:
+  design: docs/design.md
+  spec: docs/spec.md
+  getting_started: docs/getting-started.md
+  verification: docs/verification.md
+  changes: docs/changes
